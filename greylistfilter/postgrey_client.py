@@ -3,8 +3,8 @@ import argparse
 import asyncio
 
 
-async def greylist_status(loop, recipient, sender, client_ip, client_name):
-    reader, writer = await asyncio.open_connection('127.0.0.1', 10023, loop=loop)
+async def greylist_status(recipient, sender, client_ip, client_name):
+    reader, writer = await asyncio.open_connection('127.0.0.1', 10023)
 
     writer.write(b'request=smtpd_access_policy\n')
     writer.write(b'recipient=%s\n' % recipient.encode())
@@ -17,7 +17,7 @@ async def greylist_status(loop, recipient, sender, client_ip, client_name):
 
     writer.close()
 
-    return reply.decode()
+    return reply.decode().rstrip()
 
 
 if __name__ == '__main__':
@@ -34,8 +34,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     loop = asyncio.get_event_loop()
-    result = loop.run_until_complete(greylist_status(loop, 
+    result = loop.run_until_complete(greylist_status(
         args.recipient, args.sender, args.address, args.hostname))
     loop.close()
 
-    print(result, end='')
+    print(result)
