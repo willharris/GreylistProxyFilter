@@ -1,3 +1,8 @@
 aiosmtpd
+
+# Development
+flake8
 ipython
+pylint
 pytest
+pytest-mock

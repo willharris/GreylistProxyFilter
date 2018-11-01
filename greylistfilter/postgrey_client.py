@@ -3,17 +3,25 @@ import argparse
 import asyncio
 
 
-async def greylist_status(recipient, sender, client_ip, client_name):
-    reader, writer = await asyncio.open_connection('127.0.0.1', 10023)
+async def greylist_status(recipient, sender, client_ip, client_name, host='localhost', port=10023):
+    reader, writer = await asyncio.open_connection(host, port)
 
-    writer.write(b'request=smtpd_access_policy\n')
-    writer.write(b'recipient=%s\n' % recipient.encode())
-    writer.write(b'sender=%s\n' % sender.encode())
-    writer.write(b'client_address=%s\n' % client_ip.encode())
-    writer.write(b'client_name=%s\n' % client_name.encode())
-    writer.write(b'\n')
+    data = (b'request=smtpd_access_policy\n'
+            b'recipient=%s\n'
+            b'sender=%s\n'
+            b'client_address=%s\n'
+            b'client_name=%s\n'
+            b'\n') % (recipient.encode(), sender.encode(), client_ip.encode(), client_name.encode())
 
-    reply = await reader.read(1024)
+    writer.write(data)
+    await writer.drain()
+
+    reply = b''
+    while True:
+        line = await reader.readline()
+        if not line or line == b'\n':
+            break
+        reply = line
 
     writer.close()
 
@@ -35,7 +43,7 @@ if __name__ == '__main__':
 
     loop = asyncio.get_event_loop()
     result = loop.run_until_complete(greylist_status(
-        args.recipient, args.sender, args.address, args.hostname))
+        args.recipient, args.sender, args.address, args.hostname, args.server, args.port))
     loop.close()
 
     print(result)
