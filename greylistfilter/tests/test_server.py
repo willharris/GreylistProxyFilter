@@ -1,29 +1,45 @@
 import asyncio
+import unittest.mock
 import pytest
+
+# Note: this will only work with Python 3.5, which is what is installed
+# by default on Ubuntu 16.04.
+# TODO make generic for 3.5+
+from async_generator import yield_, async_generator
 
 from ..smtpproxy import PostfixProxyServer
 
 
-@pytest.mark.asyncio
-async def test_xforward(mocker):
+# c.f. pytest-asyncio/tests/async_fixtures/test_async_gen_fixtures_35.py
+@pytest.fixture
+@async_generator
+async def server():
     server = PostfixProxyServer(handler=None)
+    server.responses = []
 
-    responses = []
     def _write(data):
-        responses.append(data)
+        server.responses.append(data)
 
-    transport = mocker.Mock()
+    transport = unittest.mock.Mock()
     transport.write = _write
     server.connection_made(transport)
 
-    # allow the server to write the greeting
+    # allow the server to write the greeting, then reset
     await asyncio.sleep(0.0001)
+    assert len(server.responses) == 1
+    server.responses = []
 
-    assert len(responses) == 1
+    await yield_(server)
+
+    server.connection_lost(None)
+
+
+@pytest.mark.asyncio
+async def test_xforward(server):
 
     await server.smtp_XFORWARD('NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
 
-    assert responses[1] == b'250 Ok\r\n'
+    assert server.responses[0] == b'250 Ok\r\n'
 
     fi = server.session.fwd_info
     assert len(fi) == 3
@@ -33,7 +49,7 @@ async def test_xforward(mocker):
 
     await server.smtp_XFORWARD('HELO=a.b.c')
 
-    assert responses[2] == b'250 Ok\r\n'
+    assert server.responses[1] == b'250 Ok\r\n'
 
     assert len(fi) == 4
     assert fi['HELO'] == 'a.b.c'
@@ -42,6 +58,4 @@ async def test_xforward(mocker):
 
     assert len(fi) == 4
 
-    assert responses[3] == b'501 Syntax error\r\n'
-
-    server.connection_lost(None)
+    assert server.responses[2] == b'501 Syntax error\r\n'
