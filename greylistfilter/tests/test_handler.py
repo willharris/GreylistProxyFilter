@@ -14,22 +14,17 @@ X-Spam-DCC: URT:bloggs 1060; %(dcc_scores)s
 Danke Will
 '''
 
-@pytest.fixture
-def handler():
-    return PostfixProxyHandler(None, 1.0, 1)
-
-
 @pytest.mark.parametrize('spam_score', (
     None, -9999.99, -1.0, -1, 0, 0.1, 0.555, 1.5, 1.555
 ))
-def test_status_spam(handler, spam_score):
+def test_status_spam(pf_handler, spam_score):
     header_params = {
         b'spam_score': b'%f' % spam_score if spam_score is not None else b'',
         b'dcc_scores': b'Body=many Fuz1=1 Fuz2=1'
     }
     headers = header_tpl % header_params
     
-    status = handler.get_spam_status(headers)
+    status = pf_handler.get_spam_status(headers)
 
     assert len(status) == 2
 
@@ -87,7 +82,7 @@ def test_dcc_regex(vals, groups):
     ('30', '20', '10', 30),
     ('10', '30', '20', 30),
 ))
-def test_status_dcc(handler, body, fuz1, fuz2, result):
+def test_status_dcc(pf_handler, body, fuz1, fuz2, result):
     if body or fuz1 or fuz2:
         vals = []
         if body:
@@ -106,7 +101,7 @@ def test_status_dcc(handler, body, fuz1, fuz2, result):
     }
     headers = header_tpl % header_params
 
-    status = handler.get_spam_status(headers)
+    status = pf_handler.get_spam_status(headers)
 
     assert len(status) == 2
     assert status['dcc'] == result
