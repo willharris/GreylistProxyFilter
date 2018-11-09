@@ -44,7 +44,7 @@ def test_status_spam(pf_handler, spam_score):
     ((1, 2, -3), ('1', '2', None)),
 ))
 def test_dcc_regex(vals, groups):
-    from ..smtpproxy import re_dcc
+    from ..smtpproxy import RE_DCC
 
     comps = ['X-Spam-DCC: URT:bloggs 1060;']
     if vals[0]:
@@ -57,7 +57,7 @@ def test_dcc_regex(vals, groups):
     string = ' '.join(comps)
     print('"%s"' % string)
 
-    match = re_dcc.match(string)
+    match = RE_DCC.match(string)
 
     assert match
     assert match.groups() == groups

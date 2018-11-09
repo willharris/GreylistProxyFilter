@@ -9,6 +9,8 @@ import unittest.mock
 # TODO make generic for 3.5+
 from async_generator import yield_, async_generator
 
+from aiosmtpd.controller import Controller
+
 from ..smtpproxy import PostfixProxyServer, PostfixProxyHandler, PostfixProxyController
 
 PG_RESPONSE_DEFER = 'action=DEFER_IF_PERMIT'
@@ -78,21 +80,44 @@ def data_bytes():
     return data
 
 
-@pytest.yield_fixture
+@pytest.fixture
 def pf_proxy_server(request, unused_tcp_port):
-    def _server(spam=1.0, dcc=2):
-        handler = PostfixProxyHandler(None, spam, dcc)
+    servers = []
+
+    def _server(relay=None, spam=1.0, dcc=2):
+        for srv in servers:
+            srv.stop()
+
+        handler = PostfixProxyHandler(relay, spam, dcc)
         controller = PostfixProxyController(handler, port=unused_tcp_port)
-
-        def _stop():
-            controller.stop()
-            assert controller._thread is None
-
-        controller._stop = _stop
+        servers.append(controller)
         controller.start()
-        server = types.SimpleNamespace()
-        server.port = unused_tcp_port
-        request.addfinalizer(controller._stop)
-        return server
+        return controller
 
-    return _server
+    yield _server
+
+    for srv in servers:
+        srv.stop()
+
+
+class DataHandler:
+    def __init__(self, port):
+        self.envelope = None
+        self.content = None
+        self.port = port
+
+    async def handle_DATA(self, server, session, envelope):
+        self.envelope = envelope
+        self.content = envelope.content
+        return '250 OK'
+
+
+@pytest.fixture
+def handler(unused_tcp_port):
+    handler = DataHandler(unused_tcp_port)
+    relay = Controller(handler, hostname='localhost', port=unused_tcp_port)
+    relay.start()
+
+    yield handler
+
+    relay.stop()

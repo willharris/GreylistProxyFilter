@@ -1,13 +1,29 @@
 import asyncio
+import asynctest
 import pytest
+
+from smtplib import SMTP
+
+from ..smtpproxy import XFORWARD_ARGS, OK_REPLY
+
+
+def test_ehlo(pf_proxy_server):
+    server = pf_proxy_server()
+
+    with SMTP(server.hostname, server.port) as client:
+        code, resp = client.ehlo()
+        assert code == 250
+        xfwd_cmd = b'XFORWARD %s' % b' '.join(x.encode() for x in XFORWARD_ARGS)
+        assert xfwd_cmd in resp.splitlines()
 
 
 @pytest.mark.asyncio
 async def test_xforward(simple_proxy_server):
+    ok = b'%s\r\n' % OK_REPLY.encode()
 
     await simple_proxy_server.smtp_XFORWARD('NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
 
-    assert simple_proxy_server.responses[0] == b'250 Ok\r\n'
+    assert simple_proxy_server.responses[0] == ok
 
     fi = simple_proxy_server.session.fwd_info
     assert len(fi) == 3
@@ -17,7 +33,7 @@ async def test_xforward(simple_proxy_server):
 
     await simple_proxy_server.smtp_XFORWARD('HELO=a.b.c')
 
-    assert simple_proxy_server.responses[1] == b'250 Ok\r\n'
+    assert simple_proxy_server.responses[1] == ok
 
     assert len(fi) == 4
     assert fi['HELO'] == 'a.b.c'
@@ -29,11 +45,50 @@ async def test_xforward(simple_proxy_server):
     assert simple_proxy_server.responses[2] == b'501 Syntax error\r\n'
 
 
-def test_d(pf_proxy_server, data_bytes):
-    # print(data_bytes)
-
+def test_no_greylist_server_still_relays(pf_proxy_server, data_bytes, mocker):
     server = pf_proxy_server()
 
-    print('port: %d' % server.port)
+    mock_relay = mocker.patch.object(server.handler, 'relay_mail')
 
-    assert len(data_bytes)
+    with SMTP(server.hostname, server.port) as client:
+        code, _ = client.ehlo()
+        assert code == 250
+        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+        assert code == 250
+        code, _ = client.mail('bob@test.com')
+        assert code == 250
+        code, _ = client.rcpt('fred@test.com')
+        assert code == 250
+        code, _ = client.data(data_bytes)
+        assert code == 250
+
+    mock_relay.assert_called_once_with(mocker.ANY, None)
+
+
+def test_relaying_mail(pf_proxy_server, handler, data_bytes):
+    server = pf_proxy_server('localhost:%d' % handler.port)
+
+    mail_from = 'bob@test.com'
+    rcpt_to = 'fred@test.com'
+
+    with SMTP(server.hostname, server.port) as client:
+        code, _ = client.ehlo()
+        assert code == 250
+        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+        assert code == 250
+        code, _ = client.mail(mail_from)
+        assert code == 250
+        code, _ = client.rcpt(rcpt_to)
+        assert code == 250
+        code, _ = client.data(data_bytes)
+        assert code == 250
+        client.quit()
+        client.close()
+
+    assert handler.envelope.mail_from == mail_from
+    assert handler.envelope.rcpt_tos == [rcpt_to]
+    assert handler.content == data_bytes
+
+
+def test_deferred_mail(pf_proxy_server, mail_relay, data_bytes):
+    pass

@@ -12,8 +12,12 @@ from .postgrey_client import greylist_status
 
 logger = logging.getLogger('SpamFilterProxy')
 
-re_status = re.compile(r'^X-Spam-Status: No, score=(\S+) .*$')
-re_dcc = re.compile(r'^X-Spam-DCC: .+?(?:Body=(?:(\d+|many)|\S+?))?\s*(?:Fuz1=(?:(\d+|many)|\S+?))?\s*(?:Fuz2=(?:(\d+|many)|\S+?))?$')
+RE_STATUS = re.compile(r'^X-Spam-Status: No, score=(\S+) .*$')
+RE_DCC = re.compile(r'^X-Spam-DCC: .+?(?:Body=(?:(\d+|many)|\S+?))?\s*(?:Fuz1=(?:(\d+|many)|\S+?))?\s*(?:Fuz2=(?:(\d+|many)|\S+?))?$')
+
+XFORWARD_ARGS = ('NAME', 'ADDR', 'PROTO', 'HELO')
+
+OK_REPLY = '250 OK'
 
 
 def byte_lines(data):
@@ -39,12 +43,10 @@ def byte_lines(data):
 
 class PostfixProxyServer(SMTP):
 
-    XF_ARGS = ('NAME', 'ADDR', 'PROTO', 'HELO')
-
-    @syntax('XFORWARD NAME ADDR PROTO HELO')
+    @syntax('XFORWARD %s' % ' '.join(XFORWARD_ARGS))
     async def smtp_XFORWARD(self, args):
         kwargs = dict(x.split('=') for x in args.split(' '))
-        if not set(kwargs.keys()).issubset(self.XF_ARGS):
+        if not set(kwargs.keys()).issubset(XFORWARD_ARGS):
             logger.error('Client sent invalid arguments: %s', kwargs.keys())
             await self.push('501 Syntax error')
             return
@@ -56,7 +58,7 @@ class PostfixProxyServer(SMTP):
             logger.debug('Setting fwd_info: %s', kwargs)
             self.session.fwd_info = kwargs
 
-        await self.push('250 Ok')
+        await self.push(OK_REPLY)
 
 
 class PostfixProxyHandler:
@@ -96,17 +98,22 @@ class PostfixProxyHandler:
         if not result:
             try:
                 self.relay_mail(envelope, add_header)
-                result = '250 Ok'
+                result = OK_REPLY
             except Exception:
                 logger.exception('Caught exception trying to relay mail to %s', self.relay)
                 result = '500 Could not process your message'
 
         return result
 
+    async def handle_EHLO(self, server, session, envelope, hostname):
+        session.host_name = hostname
+        await server.push('250-XFORWARD %s' % ' '.join(XFORWARD_ARGS))
+        return '250 HELP'
+
     async def handle_RSET(self, session, envelope, *args):
         logger.debug('Handle RSET, clearing fwd_info')
         session.fwd_info = {}
-        return '250 Ok'
+        return OK_REPLY
 
     async def check_greylist(self, session, envelope):
         recipient = envelope.rcpt_tos[0]
@@ -130,13 +137,13 @@ class PostfixProxyHandler:
 
             line = line.decode('utf8', errors='replace')
 
-            match = re_status.match(line)
+            match = RE_STATUS.match(line)
             if match:
                 logger.debug('Got match for status')
                 status['spam'] = float(match.group(1))
                 continue
 
-            match = re_dcc.match(line)
+            match = RE_DCC.match(line)
             if match:
                 logger.debug('Got match for dcc')
                 for grp in match.groups():
@@ -168,7 +175,7 @@ class PostfixProxyHandler:
         return status
 
     def relay_mail(self, envelope, add_header):
-        if self.relay == 'None':
+        if self.relay is None:
             logger.debug('Relay is None, dropping message!')
             return
 

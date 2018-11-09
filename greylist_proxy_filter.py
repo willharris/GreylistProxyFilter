@@ -43,6 +43,12 @@ def check_dcc_type(value):
     return val
 
 
+def check_relay_type(value):
+    if value == 'None':
+        return None
+    return value
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Spam-filtering SMTP proxy server.')
     parser.add_argument('-l', '--loglevel', choices=('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'),
@@ -55,7 +61,7 @@ if __name__ == '__main__':
                         help='Port on which to listen. Default: %(default)s')
     parser.add_argument('-s', '--spam', default=1.0, type=float, help='Minimum required SpamAssassin score. Default: %(default)s')
 
-    parser.add_argument('-r', '--relay', required=True, help='Relay SMTP server')
+    parser.add_argument('-r', '--relay', type=check_relay_type, required=True, help='Relay SMTP server')
 
     args = parser.parse_args()
 
