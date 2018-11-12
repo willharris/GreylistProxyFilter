@@ -17,21 +17,28 @@ PG_RESPONSE_DEFER = 'action=DEFER_IF_PERMIT'
 
 
 async def handle_conn(reader, writer):
+    print('handle_conn started')
     while True:
         line = await reader.readline()
+        print('handle_conn read line: %s' % line)
+
         if not line or line == b'\n':
+            print('breaking!')
             break
 
     writer.write(b'%s\n' % PG_RESPONSE_DEFER.encode())
+    print('wrote response')
     await writer.drain()
     writer.write(b'\n')
 
+    print('handle_conn done!')
     writer.close()
 
 # c.f. pytest-asyncio/tests/async_fixtures/test_async_gen_fixtures_35.py
 @pytest.fixture
 @async_generator
 async def pg_server(unused_tcp_port, event_loop):
+    print('pg_server port is %d' % unused_tcp_port)
     server = await asyncio.start_server(handle_conn, host='localhost',
         port=unused_tcp_port, loop=event_loop)
 
@@ -84,11 +91,11 @@ def data_bytes():
 def pf_proxy_server(request, unused_tcp_port):
     servers = []
 
-    def _server(relay=None, spam=1.0, dcc=2):
+    def _server(relay=None, spam=1.0, dcc=2, pghost='localhost', pgport=10023):
         for srv in servers:
             srv.stop()
 
-        handler = PostfixProxyHandler(relay, spam, dcc)
+        handler = PostfixProxyHandler(relay, spam, dcc, pghost, pgport)
         controller = PostfixProxyController(handler, port=unused_tcp_port)
         servers.append(controller)
         controller.start()
@@ -113,7 +120,7 @@ class DataHandler:
 
 
 @pytest.fixture
-def handler(unused_tcp_port):
+def mail_relay(unused_tcp_port):
     handler = DataHandler(unused_tcp_port)
     relay = Controller(handler, hostname='localhost', port=unused_tcp_port)
     relay.start()

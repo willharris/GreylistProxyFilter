@@ -65,8 +65,8 @@ def test_no_greylist_server_still_relays(pf_proxy_server, data_bytes, mocker):
     mock_relay.assert_called_once_with(mocker.ANY, None)
 
 
-def test_relaying_mail(pf_proxy_server, handler, data_bytes):
-    server = pf_proxy_server('localhost:%d' % handler.port)
+def test_relaying_mail(pf_proxy_server, mail_relay, data_bytes):
+    server = pf_proxy_server('localhost:%d' % mail_relay.port)
 
     mail_from = 'bob@test.com'
     rcpt_to = 'fred@test.com'
@@ -85,10 +85,33 @@ def test_relaying_mail(pf_proxy_server, handler, data_bytes):
         client.quit()
         client.close()
 
-    assert handler.envelope.mail_from == mail_from
-    assert handler.envelope.rcpt_tos == [rcpt_to]
-    assert handler.content == data_bytes
+    assert mail_relay.envelope.mail_from == mail_from
+    assert mail_relay.envelope.rcpt_tos == [rcpt_to]
+    assert mail_relay.content == data_bytes
 
 
-def test_deferred_mail(pf_proxy_server, mail_relay, data_bytes):
-    pass
+@pytest.mark.timeout(10)
+def test_deferred_mail(pf_proxy_server, mail_relay, pg_server, data_bytes):
+    print('reported pg_server port is %d' % pg_server.port)
+    server = pf_proxy_server(relay='localhost:%d' % mail_relay.port, pgport=pg_server.port)
+
+    mail_from = 'bob@test.com'
+    rcpt_to = 'fred@test.com'
+
+    with SMTP(server.hostname, server.port) as client:
+        print('starting')
+        code, _ = client.ehlo()
+        assert code == 250
+        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+        assert code == 250
+        code, _ = client.mail(mail_from)
+        assert code == 250
+        code, _ = client.rcpt(rcpt_to)
+        assert code == 250
+        print('here')
+        code, _ = client.data(data_bytes)
+        assert code == 451
+        client.quit()
+        client.close()
+
+    assert mail_relay.content is None

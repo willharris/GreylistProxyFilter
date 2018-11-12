@@ -66,10 +66,12 @@ class PostfixProxyHandler:
     DEFAULT_SPAM_SCORE = -999999
     DEFAULT_DCC_SCORE = 0
 
-    def __init__(self, relay, spam, dcc):
+    def __init__(self, relay, spam, dcc, pghost='localhost', pgport=10023):
         self.relay = relay
         self.spam = spam
         self.dcc = dcc
+        self.pghost = pghost
+        self.pgport = pgport
 
     async def handle_DATA(self, server, session, envelope):
         logger.debug('Processing message from %s', session.peer)
@@ -121,7 +123,8 @@ class PostfixProxyHandler:
         client_ip = session.fwd_info['ADDR']
         client_name = session.fwd_info['NAME']
 
-        result = await greylist_status(recipient, sender, client_ip, client_name)
+        result = await greylist_status(recipient, sender, client_ip, client_name,
+                                       self.pghost, self.pgport)
         
         logger.debug('greylist result: %s', result)
 

@@ -18,8 +18,8 @@ def configure_logging(level=None, config_file=None):
     logger.addHandler(syslog_handler)
 
 
-def main(host, port, relay, spam, dcc):
-    handler = PostfixProxyHandler(relay, spam, dcc)
+def main(host, port, relay, spam, dcc, pghost, pgport):
+    handler = PostfixProxyHandler(relay, spam, dcc, pghost, pgport)
     controller = PostfixProxyController(handler, hostname=host, port=port)
     # Run the event loop in a separate thread.
     controller.start()
@@ -62,10 +62,13 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--spam', default=1.0, type=float, help='Minimum required SpamAssassin score. Default: %(default)s')
 
     parser.add_argument('-r', '--relay', type=check_relay_type, required=True, help='Relay SMTP server')
+    parser.add_argument('--pghost', default='localhost', help='Postgrey server host. Default: %(default)s')
+    parser.add_argument('--pgport', type=int, default=10023, help='Postgrey server port. Default: %(default)s')
 
     args = parser.parse_args()
 
     configure_logging(level=args.loglevel)
     logger.info('SpamFilterProxy starting')
 
-    main(args.address, args.port, args.relay, args.spam, args.dcc)
+    main(args.address, args.port, args.relay, args.spam, args.dcc,
+         args.pghost, args.pgport)
