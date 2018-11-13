@@ -93,7 +93,7 @@ class PostfixProxyHandler:
 
         if do_grey:
             if do_grey[0].endswith('DEFER_IF_PERMIT'):
-                result = '450 4.7.1 %s' % do_grey[1] if len(do_grey) > 1 else 'greylisted'
+                result = '451 4.7.1 %s' % (do_grey[1] if len(do_grey) > 1 else 'greylisted')
             elif do_grey[0].endswith('PREPEND'):
                 add_header = do_grey[1]
 

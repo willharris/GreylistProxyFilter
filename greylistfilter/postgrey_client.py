@@ -4,7 +4,6 @@ import asyncio
 
 
 async def greylist_status(recipient, sender, client_ip, client_name, host='localhost', port=10023):
-    print('connection to pg_server on %s:%d' % (host, port))
     reader, writer = await asyncio.open_connection(host, port)
 
     data = (b'request=smtpd_access_policy\n'

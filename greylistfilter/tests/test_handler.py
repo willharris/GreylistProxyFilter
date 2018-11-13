@@ -34,6 +34,14 @@ def test_status_spam(pf_handler, spam_score):
         assert status['spam'] == PostfixProxyHandler.DEFAULT_SPAM_SCORE
 
 
+def test_status_spam_and_dcc_from_data(pf_handler, data_bytes):
+    status = pf_handler.get_spam_status(data_bytes)
+
+    assert len(status) == 2
+    assert status['spam'] == 1.1
+    assert status['dcc'] == 2
+
+
 @pytest.mark.parametrize('vals,groups', (
     ((1, 2, 3), ('1', '2', '3')),
     ((None, 2, 3), (None, '2', '3')),
@@ -55,7 +63,6 @@ def test_dcc_regex(vals, groups):
         comps.append('Fuz2=%s' % vals[2])
 
     string = ' '.join(comps)
-    print('"%s"' % string)
 
     match = RE_DCC.match(string)
 

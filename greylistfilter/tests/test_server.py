@@ -1,8 +1,9 @@
 import asyncio
-import asynctest
 import pytest
 
 from smtplib import SMTP
+from aiosmtplib import SMTP as aioSMTP, SMTPDataError
+
 
 from ..smtpproxy import XFORWARD_ARGS, OK_REPLY
 
@@ -90,28 +91,40 @@ def test_relaying_mail(pf_proxy_server, mail_relay, data_bytes):
     assert mail_relay.content == data_bytes
 
 
-@pytest.mark.timeout(10)
-def test_deferred_mail(pf_proxy_server, mail_relay, pg_server, data_bytes):
-    print('reported pg_server port is %d' % pg_server.port)
+@pytest.mark.timeout(30)
+def test_deferred_mail(pf_proxy_server, mail_relay, pg_server, data_bytes, event_loop):
     server = pf_proxy_server(relay='localhost:%d' % mail_relay.port, pgport=pg_server.port)
 
     mail_from = 'bob@test.com'
     rcpt_to = 'fred@test.com'
 
-    with SMTP(server.hostname, server.port) as client:
-        print('starting')
-        code, _ = client.ehlo()
-        assert code == 250
-        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
-        assert code == 250
-        code, _ = client.mail(mail_from)
-        assert code == 250
-        code, _ = client.rcpt(rcpt_to)
-        assert code == 250
-        print('here')
-        code, _ = client.data(data_bytes)
-        assert code == 451
-        client.quit()
-        client.close()
+    client = aioSMTP(server.hostname, server.port, loop=event_loop)
+    event_loop.run_until_complete(
+        client.connect())
+
+    code, _ = event_loop.run_until_complete(
+        client.ehlo())
+    assert code == 250
+
+    code, _ = event_loop.run_until_complete(
+        client.execute_command(b'xforward', 
+                               b'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+    )
+    assert code == 250
+
+    code, _ = event_loop.run_until_complete(
+        client.mail(mail_from))
+    assert code == 250
+
+    code, _ = event_loop.run_until_complete(
+        client.rcpt(rcpt_to))
+    assert code == 250
+
+    with pytest.raises(SMTPDataError) as ex:
+        event_loop.run_until_complete(
+            client.data(data_bytes))
+    assert ex.value.code == 451
+
+    event_loop.run_until_complete(client.quit())
 
     assert mail_relay.content is None
