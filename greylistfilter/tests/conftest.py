@@ -1,19 +1,29 @@
 import asyncio
+import getpass
+import shutil
 import os
-import pytest
+import sys
 import types
+
+from distutils.spawn import find_executable
+from io import StringIO
+from tempfile import mkdtemp
+
+import grp
+import pytest
 import unittest.mock
 
-# Note: this will only work with Python 3.5, which is what is installed
-# by default on Ubuntu 16.04.
-# TODO make generic for 3.5+
-from async_generator import yield_, async_generator
-
 from aiosmtpd.controller import Controller
+from async_generator import async_generator, yield_
 
-from ..smtpproxy import PostfixProxyServer, PostfixProxyHandler, PostfixProxyController
+from ..smtpproxy import PostfixProxyController, PostfixProxyHandler, \
+    PostfixProxyServer
 
 PG_RESPONSE_DEFER = 'action=DEFER_IF_PERMIT'
+PG_RESPONSE_PREPEND = 'action=PREPEND'
+PG_RESPONSE_DUNNO = 'action=DUNNO'
+PG_RESPONSE_TEXT = 'Greylisted, see this URL'
+PG_RESPONSE_HEADER = 'X-Greylist: The message was greylisted'
 
 
 async def handle_conn(reader, writer):
@@ -125,3 +135,98 @@ def mail_relay(unused_tcp_port_factory):
     yield handler
 
     relay.stop()
+
+#
+# Integration test fixtures
+#
+
+@pytest.fixture
+def temp_dir(request):
+    tmp = mkdtemp(prefix='pgproxy-')
+    print('Created temp dir: %s' % tmp)
+
+    yield tmp
+
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        print('Removed temp dir: %s' % tmp)
+    except Exception as e:
+        print('Failed to remove tmpdir: {}'.format(e))
+
+
+@pytest.fixture(scope='session')
+def username():
+    return getpass.getuser()
+
+
+@pytest.fixture(scope='session')
+def groupname():
+    g = grp.getgrgid(os.getgid())
+    return g.gr_name
+
+
+@pytest.fixture(scope='session')
+def postgrey_binary():
+    pg = find_executable('postgrey')
+    if len(pg) == 0:
+        raise Exception('Cannot find postgrey binary')
+    return pg
+
+
+@pytest.fixture
+def postgrey_args(postgrey_binary, temp_dir, username, groupname):
+    def _args(port):
+        print('Postgrey port: %d' % port)
+        return (
+            postgrey_binary,
+            '--inet', str(port),
+            '--delay', '1',
+            '--dbdir', temp_dir,
+            '--user', username,
+            '--group', groupname,
+            '--greylist-text', PG_RESPONSE_TEXT,
+            '--x-greylist-header', PG_RESPONSE_HEADER,
+        )
+    return _args
+
+
+class SubprocessProtocol(asyncio.SubprocessProtocol):
+    
+    def __init__(self, future):
+        self.exit_future = future
+        self.output = StringIO()
+
+    def pipe_data_received(self, fd, data):
+        self.output.write(data.decode())
+
+    def connection_lost(self, exc):
+        self.exit_future.set_result(True)
+
+    def get_actions(self):
+        actions = []
+        self.output.seek(0)
+        for line in self.output.readlines():
+            if line[:6] == 'action':
+                kwargs = dict(x.split('=') for x in line.rstrip().split(', '))
+                actions.append(kwargs)
+        return actions
+
+
+@pytest.fixture
+@async_generator
+async def real_pg_server(event_loop, unused_tcp_port_factory, postgrey_args):
+    port = unused_tcp_port_factory()
+    args = postgrey_args(port)
+
+    exit_future = asyncio.Future(loop=event_loop)
+
+    transport, protocol = await event_loop.subprocess_exec(
+        lambda: SubprocessProtocol(exit_future), 
+        *args
+    )
+
+    await yield_((port, protocol))
+
+    transport.terminate()
+    
+    await exit_future

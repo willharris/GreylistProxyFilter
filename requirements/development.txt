@@ -1,4 +1,4 @@
-aiosmtpd
+-r production.txt
 
 # Development
 aiosmtplib
@@ -8,4 +8,3 @@ pylint
 pytest
 pytest-asyncio
 pytest-mock
-pytest-timeout
