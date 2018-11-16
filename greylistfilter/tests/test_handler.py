@@ -5,14 +5,15 @@ from ..smtpproxy import PostfixProxyHandler
 header_tpl = b'''
 To: Will Harris <host@domain.com>
 X-Spam-Status: No, score=%(spam_score)s required=5.0 tests=BAYES_00,FREEMAIL_FROM,
-	KAM_LAZY_DOMAIN_SECURITY,RCVD_IN_DNSWL_LOW autolearn=no autolearn_force=no
-	version=3.4.1
+    KAM_LAZY_DOMAIN_SECURITY,RCVD_IN_DNSWL_LOW autolearn=no autolearn_force=no
+    version=3.4.1
 X-Spam-Checker-Version: SpamAssassin 3.4.1 (2015-04-28) on my.mailhost.com
 X-Spam-Relay-Countries: CH ** ** ** AT
 X-Spam-DCC: URT:bloggs 1060; %(dcc_scores)s
 
 Danke Will
 '''
+
 
 @pytest.mark.parametrize('spam_score', (
     None, -9999.99, -1.0, -1, 0, 0.1, 0.555, 1.5, 1.555
@@ -23,7 +24,7 @@ def test_status_spam(pf_handler, spam_score):
         b'dcc_scores': b'Body=many Fuz1=1 Fuz2=1'
     }
     headers = header_tpl % header_params
-    
+
     status = pf_handler.get_spam_status(headers)
 
     assert len(status) == 2

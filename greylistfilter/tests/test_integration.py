@@ -1,5 +1,4 @@
 import asyncio
-import time
 
 import pytest
 from aiosmtplib import SMTP as aioSMTP, SMTPDataError
@@ -42,7 +41,7 @@ async def test_greylisting(pf_proxy_server, mail_relay, real_pg_server, data_byt
     xforward_args = b'NAME=%s ADDR=%s PROTO=ESMTP' % (client_name.encode(), client_ip.encode())
 
     client = aioSMTP(server.hostname, server.port, loop=event_loop)
-    
+
     await client.connect()
 
     code, _ = await client.ehlo()

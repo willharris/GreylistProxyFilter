@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 from ..postgrey_client import greylist_status

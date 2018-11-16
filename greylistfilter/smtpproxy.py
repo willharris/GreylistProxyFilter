@@ -1,9 +1,7 @@
-import asyncio
 import logging
 import logging.handlers
 import re
 import smtplib
-import sys
 
 from aiosmtpd.controller import Controller
 from aiosmtpd.smtp import SMTP, syntax
@@ -13,7 +11,7 @@ from .postgrey_client import greylist_status
 logger = logging.getLogger('SpamFilterProxy')
 
 RE_STATUS = re.compile(r'^X-Spam-Status: No, score=(\S+) .*$')
-RE_DCC = re.compile(r'^X-Spam-DCC: .+?(?:Body=(?:(\d+|many)|\S+?))?\s*(?:Fuz1=(?:(\d+|many)|\S+?))?\s*(?:Fuz2=(?:(\d+|many)|\S+?))?$')
+RE_DCC = re.compile(r'^X-Spam-DCC: .+?(?:Body=(?:(\d+|many)|\S+?))?\s*(?:Fuz1=(?:(\d+|many)|\S+?))?\s*(?:Fuz2=(?:(\d+|many)|\S+?))?$')  # noqa
 
 XFORWARD_ARGS = ('NAME', 'ADDR', 'PROTO', 'HELO')
 
@@ -62,7 +60,7 @@ class PostfixProxyServer(SMTP):
 
 
 class PostfixProxyHandler:
-    
+
     DEFAULT_SPAM_SCORE = -999999
     DEFAULT_DCC_SCORE = 0
 
@@ -75,7 +73,7 @@ class PostfixProxyHandler:
 
     async def handle_DATA(self, server, session, envelope):
         logger.debug('Processing message from %s', session.peer)
-        
+
         status = self.get_spam_status(envelope.content)
 
         if status['spam'] >= self.spam and status['dcc'] >= self.dcc:
@@ -125,7 +123,7 @@ class PostfixProxyHandler:
 
         result = await greylist_status(recipient, sender, client_ip, client_name,
                                        self.pghost, self.pgport)
-        
+
         logger.debug('greylist result: %s', result)
 
         return result
@@ -163,11 +161,11 @@ class PostfixProxyHandler:
                             except ValueError as ex:
                                 logger.error('Unexpected ValueError from %s: %s', grp, ex)
                                 status['dcc'] = 1
-            
+
             if len(status) == 2:
                 logger.debug('Status fully retrieved: %s', status)
                 break
-        
+
         # If for some reason no matches were found, set some sane defaults
         if 'spam' not in status:
             status['spam'] = self.DEFAULT_SPAM_SCORE

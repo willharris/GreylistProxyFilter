@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 from smtplib import SMTP
@@ -107,7 +106,7 @@ def test_deferred_mail(pf_proxy_server, mail_relay, pg_server, data_bytes, event
     assert code == 250
 
     code, _ = event_loop.run_until_complete(
-        client.execute_command(b'xforward', 
+        client.execute_command(b'xforward',
                                b'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
     )
     assert code == 250

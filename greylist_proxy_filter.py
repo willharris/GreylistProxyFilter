@@ -3,6 +3,8 @@
 import argparse
 import logging
 
+from logging.handlers import SysLogHandler
+
 from greylistfilter.smtpproxy import PostfixProxyController, PostfixProxyHandler
 
 logger = logging.getLogger('SpamFilterProxy')
@@ -11,7 +13,7 @@ logger = logging.getLogger('SpamFilterProxy')
 def configure_logging(level=None, config_file=None):
     level = getattr(logging, level, logging.INFO)
     logger.setLevel(level)
-    syslog_handler = logging.handlers.SysLogHandler(address='/dev/log', facility=logging.handlers.SysLogHandler.LOG_MAIL)
+    syslog_handler = SysLogHandler(address='/dev/log', facility=SysLogHandler.LOG_MAIL)
     syslog_handler.setLevel(level)
     formatter = logging.Formatter('%(name)s[%(process)d]: %(levelname)s - %(message)s')
     syslog_handler.setFormatter(formatter)
@@ -39,7 +41,7 @@ def check_dcc_type(value):
 
     if val < 2:
         raise argparse.ArgumentTypeError('value must be greater than 1: %s' % val)
-    
+
     return val
 
 
@@ -59,7 +61,8 @@ if __name__ == '__main__':
                         help='Minimum required DCC score (2-many). Default: %(default)s')
     parser.add_argument('-p', '--port', type=int, default=10025,
                         help='Port on which to listen. Default: %(default)s')
-    parser.add_argument('-s', '--spam', default=1.0, type=float, help='Minimum required SpamAssassin score. Default: %(default)s')
+    parser.add_argument('-s', '--spam', default=1.0, type=float,
+                        help='Minimum required SpamAssassin score. Default: %(default)s')
 
     parser.add_argument('-r', '--relay', type=check_relay_type, required=True, help='Relay SMTP server')
     parser.add_argument('--pghost', default='localhost', help='Postgrey server host. Default: %(default)s')

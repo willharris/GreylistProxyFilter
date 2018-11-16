@@ -2,8 +2,6 @@ import asyncio
 import getpass
 import shutil
 import os
-import sys
-import types
 
 from distutils.spawn import find_executable
 from io import StringIO
@@ -39,13 +37,14 @@ async def handle_conn(reader, writer):
 
     writer.close()
 
+
 # c.f. pytest-asyncio/tests/async_fixtures/test_async_gen_fixtures_35.py
 @pytest.fixture
 @async_generator
 async def pg_server(unused_tcp_port_factory, event_loop):
     port = unused_tcp_port_factory()
     server = await asyncio.start_server(handle_conn, host='localhost',
-        port=port, loop=event_loop)
+                                        port=port, loop=event_loop)
 
     server.port = port
 
@@ -136,10 +135,10 @@ def mail_relay(unused_tcp_port_factory):
 
     relay.stop()
 
+
 #
 # Integration test fixtures
 #
-
 @pytest.fixture
 def temp_dir(request):
     tmp = mkdtemp(prefix='pgproxy-')
@@ -191,7 +190,7 @@ def postgrey_args(postgrey_binary, temp_dir, username, groupname):
 
 
 class SubprocessProtocol(asyncio.SubprocessProtocol):
-    
+
     def __init__(self, future):
         self.exit_future = future
         self.output = StringIO()
@@ -221,12 +220,12 @@ async def real_pg_server(event_loop, unused_tcp_port_factory, postgrey_args):
     exit_future = asyncio.Future(loop=event_loop)
 
     transport, protocol = await event_loop.subprocess_exec(
-        lambda: SubprocessProtocol(exit_future), 
+        lambda: SubprocessProtocol(exit_future),
         *args
     )
 
     await yield_((port, protocol))
 
     transport.terminate()
-    
+
     await exit_future
