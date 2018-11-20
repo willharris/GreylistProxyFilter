@@ -74,17 +74,7 @@ class PostfixProxyHandler:
     async def handle_DATA(self, server, session, envelope):
         logger.debug('Processing message from %s', session.peer)
 
-        status = self.get_spam_status(envelope.content)
-
-        if status['spam'] >= self.spam and status['dcc'] >= self.dcc:
-            logger.debug('Spam score (%f) and DCC score (%d) conditions met, checking greylist',
-                         status['spam'], status['dcc'])
-            try:
-                response = await self.check_greylist(session, envelope)
-                do_grey = response.split(' ', 1)
-            except Exception as ex:
-                logger.error('Problem while checking with greylisting server: %s', ex)
-                do_grey = []
+        do_grey = await self.process_data(session, envelope)
 
         add_header = None
         result = None
@@ -127,6 +117,31 @@ class PostfixProxyHandler:
         logger.debug('greylist result: %s', result)
 
         return result
+
+    async def process_data(self, session, envelope):
+
+        do_grey = []
+
+        if self.greylist_conditions_met(envelope.content):
+            try:
+                response = await self.check_greylist(session, envelope)
+                do_grey = response.split(' ', 1)
+            except Exception as ex:
+                logger.error('Problem while checking with greylisting server: %s', ex)
+
+        return do_grey
+
+    def greylist_conditions_met(self, data):
+        status = self.get_spam_status(data)
+
+        conditions_met = False
+
+        if status['spam'] >= self.spam and status['dcc'] >= self.dcc:
+            logger.debug('Spam score (%f) and DCC score (%d) conditions met, checking greylist',
+                         status['spam'], status['dcc'])
+            conditions_met = True
+        
+        return conditions_met
 
     def get_spam_status(self, data):
         status = {}
