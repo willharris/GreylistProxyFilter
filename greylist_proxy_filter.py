@@ -55,7 +55,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Spam-filtering SMTP proxy server.')
     parser.add_argument('-l', '--loglevel', choices=('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'),
                         default='INFO', help='Logging level. Default: %(default)s')
-    parser.add_argument('-a', '--address', default='localhost',
+    parser.add_argument('-a', '--address', default='127.0.0.1',
                         help='Hostname on which to listen. Default: %(default)s')
     parser.add_argument('-d', '--dcc', type=check_dcc_type, default='2',
                         help='Minimum required DCC score (2-many). Default: %(default)s')
@@ -65,7 +65,7 @@ if __name__ == '__main__':
                         help='Minimum required SpamAssassin score. Default: %(default)s')
 
     parser.add_argument('-r', '--relay', type=check_relay_type, required=True, help='Relay SMTP server')
-    parser.add_argument('--pghost', default='localhost', help='Postgrey server host. Default: %(default)s')
+    parser.add_argument('--pghost', default='127.0.0.1', help='Postgrey server host. Default: %(default)s')
     parser.add_argument('--pgport', type=int, default=10023, help='Postgrey server port. Default: %(default)s')
 
     args = parser.parse_args()

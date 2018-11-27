@@ -1,7 +1,8 @@
 import asyncio
 import getpass
-import shutil
 import os
+import shutil
+import time
 
 from distutils.spawn import find_executable
 from io import StringIO
@@ -43,7 +44,7 @@ async def handle_conn(reader, writer):
 @async_generator
 async def pg_server(unused_tcp_port_factory, event_loop):
     port = unused_tcp_port_factory()
-    server = await asyncio.start_server(handle_conn, host='localhost',
+    server = await asyncio.start_server(handle_conn, host='127.0.0.1',
                                         port=port, loop=event_loop)
 
     server.port = port
@@ -96,12 +97,12 @@ def pf_proxy_server(request, unused_tcp_port_factory):
     port = unused_tcp_port_factory()
     servers = []
 
-    def _server(relay=None, spam=1.0, dcc=2, pghost='localhost', pgport=10023):
+    def _server(relay=None, spam=1.0, dcc=2, pghost='127.0.0.1', pgport=10023):
         for srv in servers:
             srv.stop()
 
         handler = PostfixProxyHandler(relay, spam, dcc, pghost, pgport)
-        controller = PostfixProxyController(handler, port=port)
+        controller = PostfixProxyController(handler, hostname='127.0.0.1', port=port)
         servers.append(controller)
         controller.start()
         return controller
@@ -128,7 +129,7 @@ class DataHandler:
 def mail_relay(unused_tcp_port_factory):
     port = unused_tcp_port_factory()
     handler = DataHandler(port)
-    relay = Controller(handler, hostname='localhost', port=port)
+    relay = Controller(handler, hostname='127.0.0.1', port=port)
     relay.start()
 
     yield handler
@@ -166,19 +167,20 @@ def groupname():
 
 @pytest.fixture(scope='session')
 def postgrey_binary():
-    pg = find_executable('postgrey')
-    if len(pg) == 0:
-        raise Exception('Cannot find postgrey binary')
-    return pg
+    return find_executable('postgrey')
 
 
 @pytest.fixture
 def postgrey_args(postgrey_binary, temp_dir, username, groupname):
     def _args(port):
+        if postgrey_binary is None:
+            raise Exception('Cannot find native Postgrey binary to run')
+
         print('Postgrey port: %d' % port)
+
         return (
             postgrey_binary,
-            '--inet', str(port),
+            '--inet', '127.0.0.1:%d' % port,
             '--delay', '1',
             '--dbdir', temp_dir,
             '--user', username,
@@ -186,22 +188,32 @@ def postgrey_args(postgrey_binary, temp_dir, username, groupname):
             '--greylist-text', PG_RESPONSE_TEXT,
             '--x-greylist-header', PG_RESPONSE_HEADER,
         )
+
     return _args
 
 
-class SubprocessProtocol(asyncio.SubprocessProtocol):
+@pytest.fixture
+def postgrey_docker_cmd():
+    return (
+        '/usr/sbin/postgrey',
+        '--inet', '0.0.0.0:10023',
+        '--delay', '1',
+        '--greylist-text', PG_RESPONSE_TEXT,
+        '--x-greylist-header', PG_RESPONSE_HEADER,
+    )
 
-    def __init__(self, future):
-        self.exit_future = future
+
+class ActionsMixin(object):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.output = StringIO()
 
-    def pipe_data_received(self, fd, data):
-        self.output.write(data.decode())
-
-    def connection_lost(self, exc):
-        self.exit_future.set_result(True)
+    def collect_logs(self):
+        pass
 
     def get_actions(self):
+        self.collect_logs()
         actions = []
         self.output.seek(0)
         for line in self.output.readlines():
@@ -211,11 +223,84 @@ class SubprocessProtocol(asyncio.SubprocessProtocol):
         return actions
 
 
+class DockerProtocol(ActionsMixin):
+
+    def __init__(self, container, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.container = container
+
+    def collect_logs(self):
+        self.output.seek(0)
+        self.output.truncate()
+        self.output.write(self.container.logs().decode())
+
+    def wait_for_start(self, username):
+        needle = b'Setting %s to' % (b'gid' if username == 'root' else b'uid')
+        while needle not in self.container.logs():
+            time.sleep(0.5)
+
+
+class SubprocessProtocol(ActionsMixin, asyncio.SubprocessProtocol):
+
+    def __init__(self, future, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.exit_future = future
+
+    def pipe_data_received(self, fd, data):
+        self.output.write(data.decode())
+
+    def connection_lost(self, exc):
+        self.exit_future.set_result(True)
+
+    async def wait_for_start(self, username):
+        needle = 'Setting %s to' % ('gid' if username == 'root' else 'uid')
+        haystack = ''
+        while needle not in haystack:
+            self.output.seek(0)
+            haystack = self.output.read()
+            await asyncio.sleep(0.5)
+
+
+@pytest.fixture
+def _docker_pg_server(request, pgtype, postgrey_docker_cmd, unused_tcp_port_factory, dockerfile, username):
+    if pgtype == 'native':
+        return tuple()
+
+    import docker
+
+    client = docker.from_env()
+    client.images.build(path=dockerfile, tag='postgrey')
+
+    port = unused_tcp_port_factory()
+
+    container = client.containers.run('postgrey:latest',
+                                      command=postgrey_docker_cmd,
+                                      detach=True,
+                                      name='postgrey',
+                                      ports={10023: port})
+
+    protocol = DockerProtocol(container)
+    protocol.wait_for_start(username)
+
+    def cleanup():
+        container.stop()
+        container.remove()
+
+    request.addfinalizer(cleanup)
+
+    return port, protocol
+
+
 @pytest.fixture
 @async_generator
-async def real_pg_server(event_loop, unused_tcp_port_factory, postgrey_args):
+async def _native_pg_server(pgtype, event_loop, unused_tcp_port_factory, postgrey_args, username):
+    if pgtype == 'docker':
+        await yield_(tuple())
+        return
+
     port = unused_tcp_port_factory()
     args = postgrey_args(port)
+    print('Args:', ' '.join(args))
 
     exit_future = asyncio.Future(loop=event_loop)
 
@@ -224,8 +309,16 @@ async def real_pg_server(event_loop, unused_tcp_port_factory, postgrey_args):
         *args
     )
 
+    await protocol.wait_for_start(username)
+
     await yield_((port, protocol))
 
     transport.terminate()
 
     await exit_future
+
+
+@pytest.fixture
+def real_pg_server(_native_pg_server, _docker_pg_server):
+    choice = _docker_pg_server or _native_pg_server
+    return choice

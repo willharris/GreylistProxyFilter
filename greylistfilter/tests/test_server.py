@@ -66,7 +66,7 @@ def test_no_greylist_server_still_relays(pf_proxy_server, data_bytes, mocker):
 
 
 def test_relaying_mail(pf_proxy_server, mail_relay, data_bytes):
-    server = pf_proxy_server('localhost:%d' % mail_relay.port)
+    server = pf_proxy_server('127.0.0.1:%d' % mail_relay.port)
 
     mail_from = 'bob@test.com'
     rcpt_to = 'fred@test.com'
@@ -92,7 +92,7 @@ def test_relaying_mail(pf_proxy_server, mail_relay, data_bytes):
 
 @pytest.mark.timeout(30)
 def test_deferred_mail(pf_proxy_server, mail_relay, pg_server, data_bytes, event_loop):
-    server = pf_proxy_server(relay='localhost:%d' % mail_relay.port, pgport=pg_server.port)
+    server = pf_proxy_server(relay='127.0.0.1:%d' % mail_relay.port, pgport=pg_server.port)
 
     mail_from = 'bob@test.com'
     rcpt_to = 'fred@test.com'

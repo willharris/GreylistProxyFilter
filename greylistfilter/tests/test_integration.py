@@ -13,17 +13,22 @@ from .conftest import (PG_RESPONSE_DEFER, PG_RESPONSE_DUNNO,
 async def test_expected_responses(real_pg_server):
     pg_port, pg_proto = real_pg_server
 
-    result = await greylist_status('a', 'b', 'c', 'd', port=pg_port)
+    recipient = 'a@test.com'
+    sender = 'b@test.com'
+    client_ip = '1.2.3.4'
+    client_name = 'test.host.local'
+
+    result = await greylist_status(recipient, sender, client_ip, client_name, port=pg_port)
     vals = result.split(' ', 1)
     assert vals[0] == PG_RESPONSE_DEFER
 
     await asyncio.sleep(1)
 
-    result = await greylist_status('a', 'b', 'c', 'd', port=pg_port)
+    result = await greylist_status(recipient, sender, client_ip, client_name, port=pg_port)
     vals = result.split(' ', 1)
     assert vals[0] == PG_RESPONSE_PREPEND
 
-    result = await greylist_status('a', 'b', 'c', 'd', port=pg_port)
+    result = await greylist_status(recipient, sender, client_ip, client_name, port=pg_port)
     vals = result.split(' ', 1)
     assert vals[0] == PG_RESPONSE_DUNNO
 
@@ -32,7 +37,7 @@ async def test_expected_responses(real_pg_server):
 async def test_greylisting(pf_proxy_server, mail_relay, real_pg_server, data_bytes, event_loop):
     pg_port, pg_proto = real_pg_server
 
-    server = pf_proxy_server(relay='localhost:%d' % mail_relay.port, pgport=pg_port)
+    server = pf_proxy_server(relay='127.0.0.1:%d' % mail_relay.port, pgport=pg_port)
 
     mail_from = 'bob@test.com'
     rcpt_to = 'fred@test.com'

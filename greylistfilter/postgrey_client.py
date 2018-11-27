@@ -3,7 +3,7 @@ import argparse
 import asyncio
 
 
-async def greylist_status(recipient, sender, client_ip, client_name, host='localhost', port=10023):
+async def greylist_status(recipient, sender, client_ip, client_name, host='127.0.0.1', port=10023):
     reader, writer = await asyncio.open_connection(host, port)
 
     data = (b'request=smtpd_access_policy\n'
@@ -19,18 +19,18 @@ async def greylist_status(recipient, sender, client_ip, client_name, host='local
     reply = b''
     while True:
         line = await reader.readline()
-        if not line or line == b'\n':
+        if line == b'\n':
             break
         reply = line
 
     writer.close()
-
+    print(reply)
     return reply.decode().rstrip()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Postgrey client.')
-    parser.add_argument('-s', '--server', default='localhost',
+    parser.add_argument('-s', '--server', default='127.0.0.1',
                         help='Name or IP of the Postgrey server. Default: %(default)s')
     parser.add_argument('-p', '--port', type=int, default=10023,
                         help='Port of the Postgrey server. Default: %(default)s')

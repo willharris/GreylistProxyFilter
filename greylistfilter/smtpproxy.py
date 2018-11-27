@@ -1,4 +1,3 @@
-import logging
 import logging.handlers
 import re
 import smtplib
@@ -64,7 +63,7 @@ class PostfixProxyHandler:
     DEFAULT_SPAM_SCORE = -999999
     DEFAULT_DCC_SCORE = 0
 
-    def __init__(self, relay, spam, dcc, pghost='localhost', pgport=10023):
+    def __init__(self, relay, spam, dcc, pghost='127.0.0.1', pgport=10023):
         self.relay = relay
         self.spam = spam
         self.dcc = dcc

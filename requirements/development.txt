@@ -2,6 +2,7 @@
 
 # Development
 aiosmtplib
+docker
 flake8
 ipython
 pylint
