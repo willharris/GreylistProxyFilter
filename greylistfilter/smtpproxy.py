@@ -15,12 +15,13 @@ RE_DCC = re.compile(r'^X-Spam-DCC: .+?(?:Body=(?:(\d+|many)|\S+?))?\s*(?:Fuz1=(?
 XFORWARD_ARGS = ('NAME', 'ADDR', 'PROTO', 'HELO')
 
 OK_REPLY = '250 OK'
+ERROR_REPLY = '450 Exception'
 
 
 def byte_lines(data):
     """
     Generator to return byte objects line-by-line,
-    i.e. separarated by a newline character
+    i.e. separated by a newline character
     """
     if type(data) is not bytes:
         raise TypeError('requires a <bytes> object')
@@ -34,7 +35,7 @@ def byte_lines(data):
             start = pos
         pos += 1
 
-    if start > 0 and pos > start:
+    if 0 < start < pos:
         yield data[start:pos]
 
 
@@ -88,9 +89,12 @@ class PostfixProxyHandler:
             try:
                 self.relay_mail(envelope, add_header)
                 result = OK_REPLY
-            except Exception:
+            except smtplib.SMTPResponseException as ex:
+                logger.warning('Message could not be relayed: %s', ex)
+                result = '%d %s' % (ex.smtp_code, ex.smtp_error.decode())
+            except Exception as ex:
                 logger.exception('Caught exception trying to relay mail to %s', self.relay)
-                result = '500 Could not process your message'
+                result = ERROR_REPLY + ': %s' % ex
 
         return result
 
@@ -139,7 +143,7 @@ class PostfixProxyHandler:
             logger.debug('Spam score (%f) and DCC score (%d) conditions met, checking greylist',
                          status['spam'], status['dcc'])
             conditions_met = True
-        
+
         return conditions_met
 
     def get_spam_status(self, data):
@@ -166,15 +170,11 @@ class PostfixProxyHandler:
                         if grp == 'many':
                             status['dcc'] = 999999
                         else:
-                            try:
-                                val = int(grp)
-                                if 'dcc' in status and val > status['dcc']:
-                                    status['dcc'] = val
-                                elif 'dcc' not in status:
-                                    status['dcc'] = val
-                            except ValueError as ex:
-                                logger.error('Unexpected ValueError from %s: %s', grp, ex)
-                                status['dcc'] = 1
+                            val = int(grp)
+                            if 'dcc' in status and val > status['dcc']:
+                                status['dcc'] = val
+                            elif 'dcc' not in status:
+                                status['dcc'] = val
 
             if len(status) == 2:
                 logger.debug('Status fully retrieved: %s', status)
@@ -190,7 +190,7 @@ class PostfixProxyHandler:
         return status
 
     def relay_mail(self, envelope, add_header):
-        if self.relay is None:
+        if self.relay is None:  # pragma: no cover
             logger.debug('Relay is None, dropping message!')
             return
 

@@ -15,8 +15,8 @@ import unittest.mock
 from aiosmtpd.controller import Controller
 from async_generator import async_generator, yield_
 
-from ..smtpproxy import PostfixProxyController, PostfixProxyHandler, \
-    PostfixProxyServer
+from ..smtpproxy import (PostfixProxyController, PostfixProxyHandler,
+                         PostfixProxyServer, OK_REPLY)
 
 PG_RESPONSE_DEFER = 'action=DEFER_IF_PERMIT'
 PG_RESPONSE_PREPEND = 'action=PREPEND'
@@ -114,34 +114,46 @@ def pf_proxy_server(request, unused_tcp_port_factory):
 
 
 class DataHandler:
-    def __init__(self, port):
+    def __init__(self, port, code):
         self.envelope = None
         self.content = None
         self.port = port
+        self.code = code
 
     async def handle_DATA(self, server, session, envelope):
         self.envelope = envelope
         self.content = envelope.content
-        return '250 OK'
+        return self.code
 
 
 @pytest.fixture
-def mail_relay(unused_tcp_port_factory):
-    port = unused_tcp_port_factory()
-    handler = DataHandler(port)
-    relay = Controller(handler, hostname='127.0.0.1', port=port)
-    relay.start()
+def mail_relay_factory(unused_tcp_port_factory):
+    relays = []
 
-    yield handler
+    def _make_relay(code=OK_REPLY):
+        port = unused_tcp_port_factory()
+        handler = DataHandler(port, code)
+        relay = Controller(handler, hostname='127.0.0.1', port=port)
+        relay.start()
+        relays.append(relay)
+        return handler
 
-    relay.stop()
+    yield _make_relay
+
+    for r in relays:
+        r.stop()
+
+
+@pytest.fixture
+def mail_relay(mail_relay_factory):
+    return mail_relay_factory()
 
 
 #
 # Integration test fixtures
 #
 @pytest.fixture
-def temp_dir(request):
+def temp_dir():
     tmp = mkdtemp(prefix='pgproxy-')
     print('Created temp dir: %s' % tmp)
 

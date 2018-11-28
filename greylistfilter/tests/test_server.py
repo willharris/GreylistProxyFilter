@@ -4,7 +4,7 @@ from smtplib import SMTP
 from aiosmtplib import SMTP as aioSMTP, SMTPDataError
 
 
-from ..smtpproxy import XFORWARD_ARGS, OK_REPLY
+from ..smtpproxy import XFORWARD_ARGS, OK_REPLY, ERROR_REPLY
 
 
 def test_ehlo(pf_proxy_server):
@@ -88,6 +88,64 @@ def test_relaying_mail(pf_proxy_server, mail_relay, data_bytes):
     assert mail_relay.envelope.mail_from == mail_from
     assert mail_relay.envelope.rcpt_tos == [rcpt_to]
     assert mail_relay.content == data_bytes
+
+
+@pytest.mark.parametrize('relay_code', (
+    500, 400, 450, 451
+))
+def test_failed_relaying_mail(pf_proxy_server, mail_relay_factory, data_bytes, relay_code):
+    relay_msg = 'some %d failure reason' % relay_code
+    mail_relay = mail_relay_factory('%d %s' % (relay_code, relay_msg))
+    server = pf_proxy_server('127.0.0.1:%d' % mail_relay.port)
+
+    mail_from = 'bob@test.com'
+    rcpt_to = 'fred@test.com'
+
+    with SMTP(server.hostname, server.port) as client:
+        code, _ = client.ehlo()
+        assert code == 250
+        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+        assert code == 250
+        code, _ = client.mail(mail_from)
+        assert code == 250
+        code, _ = client.rcpt(rcpt_to)
+        assert code == 250
+        code, msg = client.data(data_bytes)
+        assert code == relay_code
+        assert msg.decode() == relay_msg
+        client.quit()
+        client.close()
+
+    assert mail_relay.envelope.mail_from == mail_from
+    assert mail_relay.envelope.rcpt_tos == [rcpt_to]
+    assert mail_relay.content == data_bytes
+
+
+def test_exception_relaying_mail(pf_proxy_server, mail_relay_factory, data_bytes, mocker):
+    mail_relay = mail_relay_factory()
+    server = pf_proxy_server('127.0.0.1:%d' % mail_relay.port)
+
+    mock = mocker.patch.object(server.handler, 'relay_mail')
+    ex_msg = 'boom goes the mail!'
+    mock.side_effect = Exception(ex_msg)
+
+    mail_from = 'bob@test.com'
+    rcpt_to = 'fred@test.com'
+
+    with SMTP(server.hostname, server.port) as client:
+        code, _ = client.ehlo()
+        assert code == 250
+        code, _ = client.docmd('xforward', 'NAME=spike.porcupine.org ADDR=168.100.189.2 PROTO=ESMTP')
+        assert code == 250
+        code, _ = client.mail(mail_from)
+        assert code == 250
+        code, _ = client.rcpt(rcpt_to)
+        assert code == 250
+        code, msg = client.data(data_bytes)
+        assert code == 450
+        assert msg.decode() == ERROR_REPLY.split(' ', 1)[1] + ': ' + ex_msg
+        client.quit()
+        client.close()
 
 
 @pytest.mark.timeout(30)

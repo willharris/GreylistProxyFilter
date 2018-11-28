@@ -1,6 +1,6 @@
 import pytest
 
-from ..smtpproxy import PostfixProxyHandler
+from ..smtpproxy import PostfixProxyHandler, byte_lines
 
 header_tpl = b'''
 To: Will Harris <host@domain.com>
@@ -13,6 +13,23 @@ X-Spam-DCC: URT:bloggs 1060; %(dcc_scores)s
 
 Danke Will
 '''
+
+
+def test_byte_lines():
+    lines = []
+
+    for line in byte_lines(header_tpl):
+        lines.append(line)
+
+    num_lines = header_tpl.count(b'\n')
+
+    assert num_lines == len(lines)
+
+    with pytest.raises(TypeError):
+        for line in byte_lines(header_tpl.decode()):
+            lines.append(line)
+
+    assert num_lines == len(lines)
 
 
 @pytest.mark.parametrize('spam_score', (
@@ -73,6 +90,9 @@ def test_dcc_regex(vals, groups):
 
 @pytest.mark.parametrize('body,fuz1,fuz2,result', (
     (None, None, None, PostfixProxyHandler.DEFAULT_DCC_SCORE),
+    ('larry', '2', '3', 3),
+    ('1', 'curly', '3', 3),
+    ('1', '2', 'moe', 2),
     ('10', None, None, 10),
     (None, '5', None, 5),
     (None, None, '3', 3),
@@ -113,3 +133,13 @@ def test_status_dcc(pf_handler, body, fuz1, fuz2, result):
 
     assert len(status) == 2
     assert status['dcc'] == result
+
+
+def test_no_status_found(pf_handler):
+    headers = b'To: Will Harris <will@harris.ch>\r\nFrom: Bob Fred <bob@fred.com>\r\n\r\nThis is the body\r\n'
+
+    status = pf_handler.get_spam_status(headers)
+
+    assert len(status) == 2
+    assert status['spam'] == PostfixProxyHandler.DEFAULT_SPAM_SCORE
+    assert status['dcc'] == PostfixProxyHandler.DEFAULT_DCC_SCORE

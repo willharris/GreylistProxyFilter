@@ -28,7 +28,7 @@ async def greylist_status(recipient, sender, client_ip, client_name, host='127.0
     return reply.decode().rstrip()
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
     parser = argparse.ArgumentParser(description='Postgrey client.')
     parser.add_argument('-s', '--server', default='127.0.0.1',
                         help='Name or IP of the Postgrey server. Default: %(default)s')

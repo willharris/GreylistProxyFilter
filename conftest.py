@@ -14,7 +14,7 @@ def pgtype_check(value):
             import docker
             client = docker.from_env()
             client.version()
-        except:
+        except:  # noqa
             raise argparse.ArgumentTypeError('Docker is not running')
 
     return value
